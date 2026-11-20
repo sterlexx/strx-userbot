@@ -1,0 +1,39 @@
+# STRX юзербот на GitHub Actions — бесплатно, без сервера.
+# Запускается сам каждый час. Ключ STRX_KEY — в Settings → Secrets and variables → Actions.
+name: STRX userbot
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: strx-userbot
+  cancel-in-progress: false
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Юзербот
+        env:
+          STRX_KEY: ${{ secrets.STRX_KEY }}
+        run: |
+          if [ -z "$STRX_KEY" ]; then echo "Добавь секрет STRX_KEY (ключ из админки сайта)"; exit 1; fi
+          mkdir -p /tmp/ub && cd /tmp/ub
+          curl -fsSL "https://strxshop.com/userbot/files.json?k=$STRX_KEY" -o files.json
+          node -e 'const f=require("./files.json");for(const [n,c] of Object.entries(f))require("fs").writeFileSync(n,c);'
+          printf '{"workerUrl":"%s","secret":"%s"}\n' "https://strxshop.com" "$STRX_KEY" > site.json
+          npm i --omit=dev --no-audit --no-fund --silent
+          node index.js ci
+      - name: Не дать GitHub выключить расписание
+        if: always()
+        run: |
+          if [ $(( $(date +%s) - $(git log -1 --format=%ct) )) -gt 3888000 ]; then
+            git config user.name strx-bot && git config user.email strx-bot@users.noreply.github.com
+            git commit --allow-empty -m "keepalive" && git push
+          fi
